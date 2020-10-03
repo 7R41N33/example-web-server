@@ -4,17 +4,23 @@
 require 'socket'
 require './lib/response'
 require './lib/request'
+require './lib/errors/not_found_error.rb'
+require './lib/errors/forbidden_error.rb'
 
 MAX_EOL = 2
-
 
 socket = TCPServer.new(ENV['HOST'], ENV['PORT'])
 
 def handle_request(request_text, client)
-  request  = Request.new(request_text)
-  puts "#{client.peeraddr[3]} #{request.path}"
+  request = Request.new(request_text)
+  puts "#{client.peeraddr[3]}"
 
-  response = Response.new(code: 200, data: "Hello, world!")
+  file_path = File.dirname(__FILE__) + request.path
+  raise NotFoundError unless File.exist?(file_path)
+  raise ForbiddenError unless File.readable?(file_path)
+
+  file_content = File.read(file_path)
+  response = Response.new(code: 200, data: "12312312312")
 
   response.send(client)
 
@@ -29,7 +35,6 @@ def handle_connection(client)
     buf = client.recv(1)
     puts "#{client} #{buf}"
     request_text += buf
-
     eol_count += 1 if buf == "\n"
 
     if eol_count == MAX_EOL
@@ -39,10 +44,14 @@ def handle_connection(client)
 
     # sleep 1
   end
+rescue BaseError => e
+  handle_error(client, e.code, e.message)
 rescue => e
-  puts "Error: #{e}"
+  handle_error(client, 500, "Internal Server Error")
+end
 
-  response = Response.new(code: 500, data: "Internal Server Error")
+def handle_error(client, code, message)
+  response = Response.new(code: code, data: message)
   response.send(client)
 
   client.close
@@ -55,4 +64,3 @@ loop do
     handle_connection(client)
   end
 end
-
